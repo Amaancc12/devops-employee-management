@@ -10,34 +10,102 @@ namespace EmployeeService.Controllers;
 public class EmployeesController : ControllerBase
 {
     private readonly EmployeeDbContext _context;
+    private readonly HttpClient _httpClient;
 
-    public EmployeesController(EmployeeDbContext context)
+    public EmployeesController(
+        EmployeeDbContext context,
+        IHttpClientFactory httpClientFactory)
     {
         _context = context;
+        _httpClient = httpClientFactory.CreateClient("DepartmentService");
     }
 
-    // GET: api/Employees
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Employee>>> GetEmployees()
+// GET: api/Employees
+
+[HttpGet]
+public async Task<ActionResult<IEnumerable<object>>> GetEmployees()
+{
+    var employees = await _context.Employees.ToListAsync();
+
+    var result = new List<object>();
+
+    foreach (var employee in employees)
     {
-        var employees = await _context.Employees.ToListAsync();
+        var response = await _httpClient.GetAsync(
+            $"/api/Departments/{employee.DepartmentID}");
 
-        return Ok(employees);
+        if (response.IsSuccessStatusCode)
+        {
+            var department = await response.Content.ReadFromJsonAsync<object>();
+
+            result.Add(new
+            {
+                employee.Id,
+                employee.Name,
+                employee.Email,
+                employee.Salary,
+                employee.DepartmentID,
+                Department = department
+            });
+        }
+        else
+        {
+            result.Add(new
+            {
+                employee.Id,
+                employee.Name,
+                employee.Email,
+                employee.Salary,
+                employee.DepartmentID,
+                Department = (object?)null
+            });
+        }
     }
+
+    return Ok(result);
+}
 
     // GET: api/Employees/1
-    [HttpGet("{id:int}")]
-    public async Task<ActionResult<Employee>> GetEmployee([FromRoute] int id)
+[HttpGet("{id:int}")]
+public async Task<ActionResult> GetEmployee(
+    [FromRoute] int id)
+{
+    var employee = await _context.Employees.FindAsync(id);
+
+    if (employee == null)
     {
-        var employee = await _context.Employees.FindAsync(id);
-
-        if (employee == null)
-        {
-            return NotFound();
-        }
-
-        return Ok(employee);
+        return NotFound();
     }
+
+    // Call DepartmentService
+    var response = await _httpClient.GetAsync(
+        $"/api/Departments/{employee.DepartmentID}");
+
+    if (!response.IsSuccessStatusCode)
+    {
+        return Ok(new
+        {
+            employee.Id,
+            employee.Name,
+            employee.Email,
+            employee.Salary,
+            employee.DepartmentID,
+            Department = (object?)null
+        });
+    }
+
+    var department = await response.Content.ReadFromJsonAsync<object>();
+
+    return Ok(new
+    {
+        employee.Id,
+        employee.Name,
+        employee.Email,
+        employee.Salary,
+        employee.DepartmentID,
+        Department = department
+    });
+}
 
     // POST: api/Employees
     [HttpPost]
@@ -69,7 +137,7 @@ public class EmployeesController : ControllerBase
 
         employee.Name = updatedEmployee.Name;
         employee.Email = updatedEmployee.Email;
-        employee.Department = updatedEmployee.Department;
+        employee.DepartmentID = updatedEmployee.DepartmentID;
         employee.Salary = updatedEmployee.Salary;
 
         await _context.SaveChangesAsync();

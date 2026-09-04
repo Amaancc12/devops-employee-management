@@ -8,7 +8,7 @@ public class Employee
 
     public string Email { get; set; } = string.Empty;
 
-    public string Department { get; set; } = string.Empty;
+    public int DepartmentID { get; set; }
 
     public decimal Salary { get; set; }
 }
